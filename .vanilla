@@ -1,0 +1,123 @@
+entity CAR is
+    Port ( sensor : in  STD_LOGIC_VECTOR(2 downto 0);--// One front and one back
+	        inp: in std_logic_vector(3 downto 0);-- Four bits from the arduino for direction and distance
+           op : out  STD_LOGIC_VECTOR (3 downto 0);
+			  cath: out std_logic_vector(6 downto 0);
+			  an: out std_logic_vector(3 downto 0);
+			  servo: out std_logic; --tell arduino to move sensor
+           clk : in  STD_LOGIC);
+end CAR;
+
+architecture Behavioral of CAR is
+signal state: std_logic_vector(1 downto 0);-- sensor signal front
+signal counter: integer range 0 to 3:=0;
+signal subclk,sigclk: std_logic;-- SUBCLK-1HZ clock
+signal intop:std_logic_vector(3 downto 0);
+COMPONENT muxing is
+    Port ( in1,in2,in3,in4 : in  STD_LOGIC_VECTOR (6 downto 0);
+           cath : out  STD_LOGIC_VECTOR (6 downto 0);
+           an : out  STD_LOGIC_VECTOR (3 downto 0);
+           clk : in  STD_LOGIC);
+end COMPONENT;
+signal cat1,cat2,cat3,cat4: std_logic_vector(6 downto 0);
+COMPONENT My_rom is
+    Port ( inp : in  STD_LOGIC_VECTOR (3 downto 0);
+	 clk: in std_logic;
+           op1,op2 : out  STD_LOGIC_VECTOR (6 downto 0));
+end COMPONENT;
+COMPONENT clk_1khz is
+    Port ( clk : in  STD_LOGIC;
+           clk2 : out  STD_LOGIC);
+end COMPONENT;
+COMPONENT clk_1hz is
+    Port ( clk : in  STD_LOGIC;
+           clk2 : out  STD_LOGIC);
+end COMPONENT;
+-------------- BEGIN----------------
+begin
+
+pause:process(subclk)
+begin
+if(subclk'event and subclk='1')then
+if(counter=3)then
+counter<=0;
+else
+counter<=counter+1;
+end if;
+end if;
+end process pause;
+
+controls: process(clk,sensor)
+begin
+if(sensor="011" or sensor="101" or sensor="111")then
+op<="0000";
+servo<='1';
+elsif(clk'event and clk='1')then
+case state is
+when "00"=>if(counter=0)then
+           intop<="1101";
+			  servo<='0';
+           elsif(counter=3)then
+			  intop<="0000";
+			  servo<='1'; -- tells arduino to start scanning again
+			  end if;
+when "01"=> if(counter=0)then
+            intop<="1010";
+				servo<='0';
+				elsif(counter=3)then
+           intop<="0000";
+			  servo<='1';
+			  end if;
+when "10"=> if(counter=0)then
+           intop<="0010";
+			servo<='0';
+			elsif(counter=3)then
+          intop<="0000";
+		  servo<='1';
+		  end if;
+--when "11"=> if(counter=0)then
+ --           intop<="0110";
+	--			servo<='0';
+		--		elsif(counter=3)then
+        --   intop<="0000";
+			 -- servo<='1';
+			  --end if;
+when others=> null;
+end case;
+op<=intop;
+end if;
+end process controls;
+
+state<=sensor(2 downto 1); -- front sensor
+Front_back: process(clk,intop)
+variable c: std_logic_vector(1 downto 0);
+begin
+c:=intop(1 downto 0);
+if(clk'event and clk='1')then
+case c is
+when "01"=> cat1<="0111000"; --F
+when "10"=> cat1<="1100000";--b
+when others=> cat1<=cat1;
+end case;
+end if;
+end process Front_back;
+
+Direction: process(clk,state)
+variable c: std_logic_vector(1 downto 0);
+begin
+c:=state;
+if(clk'event and clk='1')then
+case c is 
+when "00"=> cat2<="1101010"; --Nothing
+when "01"=> cat2<="1110001"; --Left
+when "10"=> cat2<="0100100"; --Straight
+when "11"=> cat2<="0001000"; --Right
+when others=> null;
+end case;
+end if;
+end process direction;
+u0: muxing port map(cat1,cat2,cat3,cat4,cath,an,sigclk);
+u1: My_rom port map(inp,clk,cat3,cat4);
+u2: clk_1khz port map(clk,sigclk);
+u3: clk_1hz port map(clk,subclk);
+end Behavioral;
